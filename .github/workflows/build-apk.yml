@@ -23,20 +23,15 @@ jobs:
         with:
           gradle-version: '9.3.1'
 
-      - name: Zip Kontrolu ve Acma
-        # Parantezli ve riskli isimleri güvenli bir şekilde açmak için tırnak içine alıyoruz
+      - name: Zip Kontrolu ve Otomatik Acma
+        # Klasördeki ilk .zip uzantılı dosyayı ismi ne olursa olsun (boşluklu, parantezli) bulur ve açar
         run: |
-          if [ -f "webnetik-vault(1).zip" ]; then
-            echo "Parantez isimli zip bulundu, açılıyor..."
-            unzip -o "webnetik-vault(1).zip" -d .
-          elif [ -f "webnetik-vault.zip" ]; then
-            echo "Normal zip bulundu, açılıyor..."
-            unzip -o webnetik-vault.zip -d .
-          elif [ -f "webnetik-pass-apk.zip" ]; then
-            echo "Alternatif zip bulundu, açılıyor..."
-            unzip -o webnetik-pass-apk.zip -d .
+          ZIP_FILE=$(find . -maxdepth 1 -name "*.zip" | head -n 1)
+          if [ -n "$ZIP_FILE" ]; then
+            echo "Bulunan zip dosyası açılıyor: $ZIP_FILE"
+            unzip -o "$ZIP_FILE" -d .
           else
-            echo "Doğrudan klasörler kontrol ediliyor..."
+            echo "Kök dizinde herhangi bir .zip dosyası bulunamadı, doğrudan klasörlerle devam ediliyor."
           fi
 
       - name: Debug Keystore Olustur
@@ -45,7 +40,7 @@ jobs:
       
       - name: APK Olustur (Build)
         run: |
-          # settings.gradle veya settings.gradle.kts dosyasını bulur
+          # settings.gradle veya settings.gradle.kts dosyasını arar
           SETTINGS_DIR=$(find . -name "settings.gradle*" -exec dirname {} \; | head -n 1)
           
           if [ -n "$SETTINGS_DIR" ]; then
