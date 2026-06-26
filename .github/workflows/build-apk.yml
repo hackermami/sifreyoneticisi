@@ -12,18 +12,20 @@ jobs:
       - name: Kodu Cek
         uses: actions/checkout@v4
 
+      # Gradle 9.3.1 ve üzeri için Java 21 kurulumu yapıyoruz
       - name: Java Kurulumu
         uses: actions/setup-java@v4
         with:
-          java-version: '17'
+          java-version: '21'
           distribution: 'temurin'
 
-      # Sistemde gradlew olmadığı için Ubuntu üzerine doğrudan resmi Gradle yüklüyoruz
+      # Hata veren Gradle sürümünü projenin istediği gibi 9.3.1'e yükselttik
       - name: Gradle Kurulumu (Sistem Geneli)
         uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: 8.5
+          gradle-version: '9.3.1'
 
+      # Zip dosyası varsa açma kontrolü
       - name: Zip Kontrolu ve Acma
         run: |
           if [ -f "webnetik-vault.zip" ]; then
@@ -40,10 +42,8 @@ jobs:
       
       - name: APK Olustur (Build)
         run: |
-          # build.gradle veya build.gradle.kts dosyasının olduğu klasörü otomatik bulur
           GRADLE_DIR=$(find . -name "build.gradle*" -exec dirname {} \;)
           
-          # Eğer alt klasördeyse (örn: app) bir üst ana dizine çıkıp derleme yapması gerekebilir
           if [ -f "$GRADLE_DIR/settings.gradle" ] || [ -f "$GRADLE_DIR/settings.gradle.kts" ]; then
             cd $GRADLE_DIR
           elif [ -f "$GRADLE_DIR/../settings.gradle" ] || [ -f "$GRADLE_DIR/../settings.gradle.kts" ]; then
