@@ -24,16 +24,19 @@ jobs:
           gradle-version: '9.3.1'
 
       - name: Zip Kontrolu ve Acma
+        # Parantezli ve riskli isimleri güvenli bir şekilde açmak için tırnak içine alıyoruz
         run: |
-          if [ -f "webnetik-vault.zip" ]; then
-            echo "Zip dosyası bulundu, açılıyor..."
+          if [ -f "webnetik-vault(1).zip" ]; then
+            echo "Parantez isimli zip bulundu, açılıyor..."
+            unzip -o "webnetik-vault(1).zip" -d .
+          elif [ -f "webnetik-vault.zip" ]; then
+            echo "Normal zip bulundu, açılıyor..."
             unzip -o webnetik-vault.zip -d .
-          elif [ -f "webnetik_vault.zip" ]; then
-            echo "Alternatif isimli zip bulundu, açılıyor..."
-            unzip -o webnetik_vault.zip -d .
           elif [ -f "webnetik-pass-apk.zip" ]; then
-            echo "Gönderilen yeni zip bulundu, açılıyor..."
+            echo "Alternatif zip bulundu, açılıyor..."
             unzip -o webnetik-pass-apk.zip -d .
+          else
+            echo "Doğrudan klasörler kontrol ediliyor..."
           fi
 
       - name: Debug Keystore Olustur
@@ -42,14 +45,16 @@ jobs:
       
       - name: APK Olustur (Build)
         run: |
-          # settings.gradle veya settings.gradle.kts dosyasının olduğu gerçek kök dizini bulur
+          # settings.gradle veya settings.gradle.kts dosyasını bulur
           SETTINGS_DIR=$(find . -name "settings.gradle*" -exec dirname {} \; | head -n 1)
           
           if [ -n "$SETTINGS_DIR" ]; then
             echo "Proje kök dizini bulundu: $SETTINGS_DIR"
-            cd $SETTINGS_DIR
+            cd "$SETTINGS_DIR"
           else
-            echo "HATA: settings.gradle dosyası projenin hiçbir yerinde bulunamadı!"
+            echo "HATA: settings.gradle dosyası hiçbir yerde bulunamadı!"
+            echo "=== Mevcut Dosya Yapısı ==="
+            ls -R
             exit 1
           fi
           
