@@ -12,20 +12,17 @@ jobs:
       - name: Kodu Cek
         uses: actions/checkout@v4
 
-      # Gradle 9.3.1 ve üzeri için Java 21 kurulumu yapıyoruz
       - name: Java Kurulumu
         uses: actions/setup-java@v4
         with:
           java-version: '21'
           distribution: 'temurin'
 
-      # Hata veren Gradle sürümünü projenin istediği gibi 9.3.1'e yükselttik
       - name: Gradle Kurulumu (Sistem Geneli)
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '9.3.1'
 
-      # Zip dosyası varsa açma kontrolü
       - name: Zip Kontrolu ve Acma
         run: |
           if [ -f "webnetik-vault.zip" ]; then
@@ -34,6 +31,9 @@ jobs:
           elif [ -f "webnetik_vault.zip" ]; then
             echo "Alternatif isimli zip bulundu, açılıyor..."
             unzip -o webnetik_vault.zip -d .
+          elif [ -f "webnetik-pass-apk.zip" ]; then
+            echo "Gönderilen yeni zip bulundu, açılıyor..."
+            unzip -o webnetik-pass-apk.zip -d .
           fi
 
       - name: Debug Keystore Olustur
@@ -42,15 +42,18 @@ jobs:
       
       - name: APK Olustur (Build)
         run: |
-          GRADLE_DIR=$(find . -name "build.gradle*" -exec dirname {} \;)
+          # settings.gradle veya settings.gradle.kts dosyasının olduğu gerçek kök dizini bulur
+          SETTINGS_DIR=$(find . -name "settings.gradle*" -exec dirname {} \; | head -n 1)
           
-          if [ -f "$GRADLE_DIR/settings.gradle" ] || [ -f "$GRADLE_DIR/settings.gradle.kts" ]; then
-            cd $GRADLE_DIR
-          elif [ -f "$GRADLE_DIR/../settings.gradle" ] || [ -f "$GRADLE_DIR/../settings.gradle.kts" ]; then
-            cd $GRADLE_DIR/..
+          if [ -n "$SETTINGS_DIR" ]; then
+            echo "Proje kök dizini bulundu: $SETTINGS_DIR"
+            cd $SETTINGS_DIR
+          else
+            echo "HATA: settings.gradle dosyası projenin hiçbir yerinde bulunamadı!"
+            exit 1
           fi
           
-          echo "Derleme baslatiliyor. Konum: $(pwd)"
+          echo "Derleme başlatılıyor. Şu anki Konum: $(pwd)"
           gradle assembleDebug
         env:
           JAVA_TOOL_OPTIONS: -Djava.awt.headless=true
@@ -59,4 +62,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: webnetik-pass-apk
-          path: "**/build/outputs/apk/debug/*.apk"
+          path: "**/build/outputs/apk/debug/ *.apk"
