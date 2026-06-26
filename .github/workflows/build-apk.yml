@@ -12,49 +12,46 @@ jobs:
       - name: Kodu Cek
         uses: actions/checkout@v4
 
-      # Eğer projen zip halindeyse otomatik açar, değilse hata vermeden devam eder
-      - name: Zip Kontrolu ve Acma
-        run: |
-          if [ -f "webnetik-vault.zip" ]; then
-            echo "Zip dosyası bulundu, açılıyor..."
-            unzip -o webnetik-vault.zip -d .
-          else
-            echo "Doğrudan kod klasörleri algılandı veya zip bulunamadı."
-          fi
-
-      # Dosyaların nerede olduğunu görmek için dizini listeler (Hata çözmeyi kolaylaştırır)
-      - name: Dizini Listele (Debug)
-        run: ls -R
-      
       - name: Java Kurulumu
         uses: actions/setup-java@v4
         with:
           java-version: '17'
           distribution: 'temurin'
-          # Hataya sebep olan cache özelliğini geçici olarak devre dışı bıraktık
-      
-      - name: Gradle Calistirma Yetkisi Ver
+
+      # Sistemde gradlew olmadığı için Ubuntu üzerine doğrudan resmi Gradle yüklüyoruz
+      - name: Gradle Kurulumu (Sistem Geneli)
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 8.5
+
+      - name: Zip Kontrolu ve Acma
         run: |
-          if [ -f "./gradlew" ]; then
-            chmod +x ./gradlew
-          elif [ -f "./app/gradlew" ]; then
-            chmod +x ./app/gradlew
-          else
-            echo "gradlew bulunamadı, mevcut dizine göre ayarlanıyor..."
+          if [ -f "webnetik-vault.zip" ]; then
+            echo "Zip dosyası bulundu, açılıyor..."
+            unzip -o webnetik-vault.zip -d .
+          elif [ -f "webnetik_vault.zip" ]; then
+            echo "Alternatif isimli zip bulundu, açılıyor..."
+            unzip -o webnetik_vault.zip -d .
           fi
-      
+
       - name: Debug Keystore Olustur
         run: |
           keytool -genkey -v -keystore ./debug.keystore -keyalg RSA -keysize 2048 -validity 10000 -alias androiddebugkey -storepass android -keypass android -dname "CN=Debug, OU=Debug, O=Debug, L=Debug, S=Debug, C=US"
       
       - name: APK Olustur (Build)
         run: |
-          if [ -f "./gradlew" ]; then
-            ./gradlew assembleDebug
-          else
-            # Eğer dosyalar 'app' veya başka bir klasörün altındaysa oraya girip derler
-            cd $(find . -name "gradlew" -exec dirname {} \;) && ./gradlew assembleDebug
+          # build.gradle veya build.gradle.kts dosyasının olduğu klasörü otomatik bulur
+          GRADLE_DIR=$(find . -name "build.gradle*" -exec dirname {} \;)
+          
+          # Eğer alt klasördeyse (örn: app) bir üst ana dizine çıkıp derleme yapması gerekebilir
+          if [ -f "$GRADLE_DIR/settings.gradle" ] || [ -f "$GRADLE_DIR/settings.gradle.kts" ]; then
+            cd $GRADLE_DIR
+          elif [ -f "$GRADLE_DIR/../settings.gradle" ] || [ -f "$GRADLE_DIR/../settings.gradle.kts" ]; then
+            cd $GRADLE_DIR/..
           fi
+          
+          echo "Derleme baslatiliyor. Konum: $(pwd)"
+          gradle assembleDebug
         env:
           JAVA_TOOL_OPTIONS: -Djava.awt.headless=true
       
