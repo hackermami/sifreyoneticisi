@@ -1,0 +1,39 @@
+name: Password Manager APK Yap
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Kodu Cek
+        uses: actions/checkout@v4
+      
+      - name: Java Kurulumu
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: 'gradle'
+
+      - name: Gradle Calistirma Yetkisi Ver
+        run: chmod +x gradlew
+      
+      - name: Debug Keystore Olustur
+        # AI Studio projesindeki debug config ayarlarının hata vermemesi için ana dizinde keystore üretiyoruz
+        run: |
+          keytool -genkey -v -keystore ./debug.keystore -keyalg RSA -keysize 2048 -validity 10000 -alias androiddebugkey -storepass android -keypass android -dname "CN=Debug, OU=Debug, O=Debug, L=Debug, S=Debug, C=US"
+      
+      - name: APK Olustur (Build)
+        run: ./gradlew assembleDebug
+        env:
+          JAVA_TOOL_OPTIONS: -Djava.awt.headless=true
+      
+      - name: APK'yi Cikti Olarak Kaydet
+        uses: actions/upload-artifact@v4
+        with:
+          name: webnetik-pass-apk
+          path: app/build/outputs/apk/debug/
