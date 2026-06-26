@@ -11,24 +11,50 @@ jobs:
     steps:
       - name: Kodu Cek
         uses: actions/checkout@v4
+
+      # Eğer projen zip halindeyse otomatik açar, değilse hata vermeden devam eder
+      - name: Zip Kontrolu ve Acma
+        run: |
+          if [ -f "webnetik-vault.zip" ]; then
+            echo "Zip dosyası bulundu, açılıyor..."
+            unzip -o webnetik-vault.zip -d .
+          else
+            echo "Doğrudan kod klasörleri algılandı veya zip bulunamadı."
+          fi
+
+      # Dosyaların nerede olduğunu görmek için dizini listeler (Hata çözmeyi kolaylaştırır)
+      - name: Dizini Listele (Debug)
+        run: ls -R
       
       - name: Java Kurulumu
         uses: actions/setup-java@v4
         with:
           java-version: '17'
           distribution: 'temurin'
-          cache: 'gradle'
-
+          # Hataya sebep olan cache özelliğini geçici olarak devre dışı bıraktık
+      
       - name: Gradle Calistirma Yetkisi Ver
-        run: chmod +x gradlew
+        run: |
+          if [ -f "./gradlew" ]; then
+            chmod +x ./gradlew
+          elif [ -f "./app/gradlew" ]; then
+            chmod +x ./app/gradlew
+          else
+            echo "gradlew bulunamadı, mevcut dizine göre ayarlanıyor..."
+          fi
       
       - name: Debug Keystore Olustur
-        # AI Studio projesindeki debug config ayarlarının hata vermemesi için ana dizinde keystore üretiyoruz
         run: |
           keytool -genkey -v -keystore ./debug.keystore -keyalg RSA -keysize 2048 -validity 10000 -alias androiddebugkey -storepass android -keypass android -dname "CN=Debug, OU=Debug, O=Debug, L=Debug, S=Debug, C=US"
       
       - name: APK Olustur (Build)
-        run: ./gradlew assembleDebug
+        run: |
+          if [ -f "./gradlew" ]; then
+            ./gradlew assembleDebug
+          else
+            # Eğer dosyalar 'app' veya başka bir klasörün altındaysa oraya girip derler
+            cd $(find . -name "gradlew" -exec dirname {} \;) && ./gradlew assembleDebug
+          fi
         env:
           JAVA_TOOL_OPTIONS: -Djava.awt.headless=true
       
@@ -36,4 +62,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: webnetik-pass-apk
-          path: app/build/outputs/apk/debug/
+          path: "**/build/outputs/apk/debug/*.apk"
