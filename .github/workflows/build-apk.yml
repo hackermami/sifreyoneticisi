@@ -54,13 +54,9 @@ jobs:
         env:
           JAVA_TOOL_OPTIONS: -Djava.awt.headless=true
       
-      # APK KAYDETME ADIMI GENİŞLETİLDİ: 
-      # Proje klasörlerinin neresinde .apk uzantılı dosya oluşursa oluşsun hepsini bulur ve yakalar.
-      # Klasör adı 'app' olmasa bile hata vermez.
-      @uses: actions/upload-artifact@v4
       - name: APK'yi Cikti Olarak Kaydet
         uses: actions/upload-artifact@v4
         with:
           name: webnetik-pass-apk
           path: "**/*.apk"
-          if-no-files-found: error # Eğer yine de bulamazsa doğrudan nedenini görmek için loglarda hata  versin
+          if-no-files-found:  error
