@@ -24,7 +24,6 @@ jobs:
           gradle-version: '9.3.1'
 
       - name: Zip Kontrolu ve Otomatik Acma
-        # Klasördeki ilk .zip uzantılı dosyayı ismi ne olursa olsun (boşluklu, parantezli) bulur ve açar
         run: |
           ZIP_FILE=$(find . -maxdepth 1 -name "*.zip" | head -n 1)
           if [ -n "$ZIP_FILE" ]; then
@@ -40,7 +39,6 @@ jobs:
       
       - name: APK Olustur (Build)
         run: |
-          # settings.gradle veya settings.gradle.kts dosyasını arar
           SETTINGS_DIR=$(find . -name "settings.gradle*" -exec dirname {} \; | head -n 1)
           
           if [ -n "$SETTINGS_DIR" ]; then
@@ -48,8 +46,6 @@ jobs:
             cd "$SETTINGS_DIR"
           else
             echo "HATA: settings.gradle dosyası hiçbir yerde bulunamadı!"
-            echo "=== Mevcut Dosya Yapısı ==="
-            ls -R
             exit 1
           fi
           
@@ -58,8 +54,13 @@ jobs:
         env:
           JAVA_TOOL_OPTIONS: -Djava.awt.headless=true
       
+      # APK KAYDETME ADIMI GENİŞLETİLDİ: 
+      # Proje klasörlerinin neresinde .apk uzantılı dosya oluşursa oluşsun hepsini bulur ve yakalar.
+      # Klasör adı 'app' olmasa bile hata vermez.
+      @uses: actions/upload-artifact@v4
       - name: APK'yi Cikti Olarak Kaydet
         uses: actions/upload-artifact@v4
         with:
           name: webnetik-pass-apk
-          path: "**/build/outputs/apk/debug/ *.apk"
+          path: "**/*.apk"
+          if-no-files-found: error # Eğer yine de bulamazsa doğrudan nedenini görmek için loglarda hata  versin
