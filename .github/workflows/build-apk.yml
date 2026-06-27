@@ -19,43 +19,57 @@ jobs:
         distribution: 'zulu'
         java-version: '21'
 
-    # Eğer dosyalar bir alt klasördeyse veya zip içindeyse diye projenin kök dizinini buluyoruz
+    # ADIM 1: Repodaki webnetik-blindsight.zip dosyasını otomatik olarak dışarı çıkarır
+    - name: Extract Zip Files Automatically
+      run: |
+        ZIP_FILE=$(find . -name "*.zip" | head -n 1)
+        if [ -n "$ZIP_FILE" ]; then
+          echo "Zip dosyası bulundu: $ZIP_FILE. Dışarı aktarılıyor..."
+          unzip -o "$ZIP_FILE" -d ./extracted_project
+          # Çıkarılan dosyaları üst dizine kopyala
+          cp -r ./extracted_project/* ./ 2>/dev/null || true
+        else
+          echo "Doğrudan kod klasörleri algılandı, zip bulunamadı."
+        fi
+
+    # ADIM 2: settings.gradle dosyasını arar, yoksa derleme için sunucuda otomatik oluşturur
     - name: Find Project Root and Setup Wrapper
       run: |
         SETTINGS_DIR=$(find . -name "settings.gradle*" -exec dirname {} \; | head -n 1)
-        if [ -n "$SETTINGS_DIR" ]; then
-          echo "Proje kök dizini bulundu: $SETTINGS_DIR"
-          cd "$SETTINGS_DIR"
-          # Gradle çalıştırma iznini veriyoruz
-          if [ -f "gradlew" ]; then
-            chmod +x gradlew
-          fi
-        else
-          echo "HATA: settings.gradle dosyası repoda hiçbir yerde bulunamadı!"
-          exit 1
+        
+        if [ -z "$SETTINGS_DIR" ]; then
+          echo "settings.gradle bulunamadı! Sunucu üzerinde otomatik oluşturuluyor..."
+          echo "rootProject.name = 'Webnetik-BlindSight'" > settings.gradle.kts
+          echo "include(':app')" >> settings.gradle.kts
+          SETTINGS_DIR="."
         fi
+        
+        cd "$SETTINGS_DIR"
+        
+        # Gradle Wrapper (gradlew) kontrolü ve yoksa sıfırdan üretilmesi
+        if [ ! -f "gradlew" ]; then
+          echo "gradlew bulunamadı, yerel gradle sunucuda kuruluyor..."
+          gradle wrapper
+        fi
+        chmod +x gradlew
         echo "PROJECT_ROOT=$SETTINGS_DIR" >> $GITHUB_ENV
 
-    # Büyük Yapay Zeka Modelini (150MB+) Doğru Klasöre İndiriyoruz
+    # ADIM 3: 150 MB+ boyutundaki kurumsal MediaPipe Yapay Zeka Modelini indirir ve assets klasörüne yazar
     - name: Download Edge AI Model (MediaPipe Face Detection)
       run: |
         cd ${{ env.PROJECT_ROOT }}
         mkdir -p app/src/main/assets
         curl -L -o app/src/main/assets/face_detection_full.tflite https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite
 
-    # Derleme işlemini projenin kurulu olduğu klasörde tetikliyoruz
+    # ADIM 4: APK Derleme İşlemini Başlatır
     - name: Build Production APK
       run: |
         cd ${{ env.PROJECT_ROOT }}
-        if [ -f "gradlew" ]; then
-          ./gradlew assembleDebug
-        else
-          gradle assembleDebug
-        fi
+        ./gradlew assembleDebug
 
-    # Oluşan APK'yı GitHub Paneline Yüklüyoruz
+    # ADIM 5: Derlenen Webnetik BlindSight APK dosyasını indirilebilir çıktı olarak panele yükler
     - name: Upload Webnetik BlindSight APK
       uses: actions/upload-artifact@v4
       with:
         name: webnetik-blindsight-apk
-        path: "**/build/outputs/apk/debu g/*.apk"
+        path: "**/build/outputs/apk/deb ug/*.apk"
