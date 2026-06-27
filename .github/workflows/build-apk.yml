@@ -26,65 +26,50 @@ jobs:
         if [ -n "$ZIP_FILE" ]; then
           echo "Güncel zip dosyası bulundu: $ZIP_FILE. Dışarı aktarılıyor..."
           unzip -o "$ZIP_FILE" -d ./extracted_project
-          cp -r ./extracted_project/* ./ 2>/dev/null || true
+          # İç içe klasör oluştuysa köke taşıyoruz
+          if [ -d "./extracted_project/My Application" ]; then
+            cp -r "./extracted_project/My Application"/* ./ 2>/dev/null || true
+          else
+            cp -r ./extracted_project/* ./ 2>/dev/null || true
+          fi
         else
           echo "HATA: webnetik-blindsight (2).zip dosyası repoda bulunamadı!"
           exit 1
         fi
 
-    # ADIM 2: Çevre, Depo Kuralları ve Paket Yapılandırmasını Düzeltir
-    - name: Find Project Root and Fix Environment
+    # ADIM 2: Orijinal Dosyaları Korumak ve Eksik Ayarları Enjekte Etmek
+    - name: Fix Repositories and Environment
       run: |
-        SETTINGS_DIR="."
-        FOUND_DIR=$(find . -name "settings.gradle*" -print -quit | xargs -I {} dirname {})
-        if [ -n "$FOUND_DIR" ]; then
-          SETTINGS_DIR="$FOUND_DIR"
-        fi
+        # Gerçek build.gradle/settings.gradle nerede bulalım
+        SETTINGS_FILE=$(find . -name "settings.gradle*" -not -path "./extracted_project/*" -print -quit)
+        SETTINGS_DIR=$(dirname "$SETTINGS_FILE")
         
         cd "$SETTINGS_DIR"
+        echo "Proje kök dizini doğrulandı: $SETTINGS_DIR"
         
+        # Sadece eksik olabilecek çevre değişkenlerini üretiyoruz
         echo "API_KEY=webnetik_dummy_key" > .env.example
         echo "BASE_URL=https://webnetik.security" >> .env.example
 
         echo "Sistem imza anahtarı (debug.keystore) sunucuda oluşturuluyor..."
         keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
 
-        # EKLENTİNİN BULUNABİLMESİ İÇİN RESMİ DEPOLARI SIFIRDAN ENJEKTE EDİYORUZ
-        cat << 'EOF' > settings.gradle.kts
-        pluginManagement {
-            repositories {
-                google()
-                mavenCentral()
-                gradlePluginPortal()
-            }
-        }
-        dependencyResolutionManagement {
-            repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
-            repositories {
-                google()
-                mavenCentral()
-            }
-        }
-        rootProject.name = "My Application"
-        EOF
-        
-        REAL_APP_DIR=$(find . -maxdepth 2 -name "build.gradle*" -not -path "./build.gradle*" -not -path "./extracted_project/*" -print -quit | xargs -I {} dirname {} | sed 's|./||')
-        if [ -n "$REAL_APP_DIR" ] && [ "$REAL_APP_DIR" != "." ] && [ "$REAL_APP_DIR" != "extracted_project" ]; then
-          echo "include(\":$REAL_APP_DIR\")" >> settings.gradle.kts
-          echo "MODULE_NAME=$REAL_APP_DIR" >> $GITHUB_ENV
-          mkdir -p "$REAL_APP_DIR"
-          echo '{"project_info":{"project_number":"123456789","project_id":"webnetik-blindsight"},"client":[{"client_info":{"mobilesdk_app_id":"1:123456:android:123","android_client_info":{"package_name":"com.aistudio.blindsight.webnetik"}},"api_key":[{"current_key":"dummy_key"}]}]}' > "$REAL_APP_DIR/google-services.json"
-        else
-          echo 'include(":app")' >> settings.gradle.kts
-          echo "MODULE_NAME=app" >> $GITHUB_ENV
-          mkdir -p app
-          echo '{"project_info":{"project_number":"123456789","project_id":"webnetik-blindsight"},"client":[{"client_info":{"mobilesdk_app_id":"1:123456:android:123","android_client_info":{"package_name":"com.aistudio.blindsight.webnetik"}},"api_key":[{"current_key":"dummy_key"}]}]}' > app/google-services.json
+        # Orijinal settings.gradle dosyasını ezmek yerine sadece eklenti depolarını zorla enjekte ediyoruz
+        if [ -f "settings.gradle.kts" ]; then
+          sed -i '1i\pluginManagement { repositories { google(); mavenCentral(); gradlePluginPortal() } }\ndependencyResolutionManagement { repositories { google(); mavenCentral() } }' settings.gradle.kts
+        elif [ -f "settings.gradle" ]; then
+          sed -i '1i\pluginManagement { repositories { google(); mavenCentral(); gradlePluginPortal() } }\ndependencyResolutionManagement { repositories { google(); mavenCentral() } }' settings.gradle
         fi
 
-        TARGET_ASSETS_DIR="${REAL_APP_DIR:-app}/src/main/assets"
-        mkdir -p "$TARGET_ASSETS_DIR"
-        echo "TARGET_ASSETS=$TARGET_ASSETS_DIR" >> $GITHUB_ENV
+        # Google Services JSON dosyasını asıl modülün (app) içine yerleştir
+        APP_DIR=$(find . -maxdepth 2 -name "build.gradle*" -not -path "./build.gradle*" -print -quit | xargs -I {} dirname {})
+        mkdir -p "$APP_DIR"
+        echo '{"project_info":{"project_number":"123456789","project_id":"webnetik-blindsight"},"client":[{"client_info":{"mobilesdk_app_id":"1:123456:android:123","android_client_info":{"package_name":"com.aistudio.blindsight.webnetik"}},"api_key":[{"current_key":"dummy_key"}]}]}' > "$APP_DIR/google-services.json"
         
+        # Yapay zeka model klasörünü garantiye al
+        mkdir -p "$APP_DIR/src/main/assets"
+        echo "TARGET_ASSETS_DIR=$SETTINGS_DIR/$APP_DIR/src/main/assets" >> $GITHUB_ENV
+
         if [ ! -f "gradlew" ]; then
           gradle wrapper
         fi
@@ -94,8 +79,7 @@ jobs:
     # ADIM 3: Yapay Zeka Modelini Doğru Konuma İndirir
     - name: Download Edge AI Model (MediaPipe Face Detection)
       run: |
-        cd ${{ env.PROJECT_ROOT }}
-        curl -L -o ${{ env.TARGET_ASSETS }}/face_detection_full.tflite https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite
+        curl -L -o ${{ env.TARGET_ASSETS_DIR }}/face_detection_full.tflite https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite
 
     # ADIM 4: APK Derleme İşlemini Başlatır
     - name: Build Production APK
@@ -103,13 +87,12 @@ jobs:
         cd ${{ env.PROJECT_ROOT }}
         ./gradlew assembleDebug
 
-    # ADIM 5: APK Dosyasını Nerede Olursa Olsun Bulur ve Ana Dizine Çeker
+    # ADIM 5: APK Dosyasını Toplar
     - name: Locate and Collect APK File
       run: |
         mkdir -p ./apk_output
-        echo "Üretilen APK dosyaları sunucu diskinde aranıyor..."
         find . -name "*.apk" -not -path "*/build-cache/*" -exec cp {} ./apk_output/ \;
-        echo "Bulunan APK dosyaları:"
+        echo "Toplanan APK'lar:"
         ls -la ./apk_output/
 
     # ADIM 6: Çıktı Klasörünü Panele Yükler
