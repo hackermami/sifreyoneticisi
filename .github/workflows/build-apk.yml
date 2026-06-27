@@ -19,34 +19,46 @@ jobs:
         distribution: 'zulu'
         java-version: '21'
 
-    # ADIM 1: Repodaki webnetik-blindsight.zip dosyasını otomatik olarak dışarı çıkarır
+    # ADIM 1: Repodaki webnetik-blindsight.zip dosyasını dışarı çıkarır
     - name: Extract Zip Files Automatically
       run: |
         ZIP_FILE=$(find . -name "*.zip" | head -n 1)
         if [ -n "$ZIP_FILE" ]; then
           echo "Zip dosyası bulundu: $ZIP_FILE. Dışarı aktarılıyor..."
           unzip -o "$ZIP_FILE" -d ./extracted_project
-          # Çıkarılan dosyaları üst dizine kopyala
           cp -r ./extracted_project/* ./ 2>/dev/null || true
         else
           echo "Doğrudan kod klasörleri algılandı, zip bulunamadı."
         fi
 
-    # ADIM 2: settings.gradle dosyasını arar, yoksa derleme için sunucuda otomatik oluşturur
-    - name: Find Project Root and Setup Wrapper
+    # ADIM 2: settings.gradle dosyasını arar ve eksik sistem dosyalarını (Hata Veren .env Dahil) üretir
+    - name: Find Project Root and Fix Environment
       run: |
-        SETTINGS_DIR=$(find . -name "settings.gradle*" -exec dirname {} \; | head -n 1)
-        
-        if [ -z "$SETTINGS_DIR" ]; then
-          echo "settings.gradle bulunamadı! Sunucu üzerinde otomatik oluşturuluyor..."
-          echo "rootProject.name = 'Webnetik-BlindSight'" > settings.gradle.kts
-          echo "include(':app')" >> settings.gradle.kts
+        # Broken pipe hatasını engellemek için daha temiz bir arama metodu kullanıyoruz
+        SETTINGS_DIR="."
+        if [ -f "settings.gradle" ] || [ -f "settings.gradle.kts" ]; then
           SETTINGS_DIR="."
+        else
+          FOUND_DIR=$(find . -name "settings.gradle*" -print -quit | xargs -I {} dirname {})
+          if [ -n "$FOUND_DIR" ]; then
+            SETTINGS_DIR="$FOUND_DIR"
+          fi
         fi
         
         cd "$SETTINGS_DIR"
         
-        # Gradle Wrapper (gradlew) kontrolü ve yoksa sıfırdan üretilmesi
+        # Hatanın ana sebebi olan eksik .env.example dosyasını burada otomatik oluşturuyoruz!
+        echo "Eksik .env.example dosyası sunucuda simüle ediliyor..."
+        echo "API_KEY=webnetik_dummy_key" > .env.example
+        echo "BASE_URL=https://webnetik.security" >> .env.example
+
+        # settings.gradle hiç yoksa sıfırdan üret
+        if [ ! -f "settings.gradle" ] && [ ! -f "settings.gradle.kts" ]; then
+          echo "rootProject.name = 'Webnetik-BlindSight'" > settings.gradle.kts
+          echo "include(':app')" >> settings.gradle.kts
+        fi
+        
+        # Gradle Wrapper (gradlew) kontrolü ve sıfırdan üretilmesi
         if [ ! -f "gradlew" ]; then
           echo "gradlew bulunamadı, yerel gradle sunucuda kuruluyor..."
           gradle wrapper
@@ -54,7 +66,7 @@ jobs:
         chmod +x gradlew
         echo "PROJECT_ROOT=$SETTINGS_DIR" >> $GITHUB_ENV
 
-    # ADIM 3: 150 MB+ boyutundaki kurumsal MediaPipe Yapay Zeka Modelini indirir ve assets klasörüne yazar
+    # ADIM 3: 150 MB+ boyutundaki kurumsal MediaPipe Yapay Zeka Modelini indirir
     - name: Download Edge AI Model (MediaPipe Face Detection)
       run: |
         cd ${{ env.PROJECT_ROOT }}
@@ -67,9 +79,9 @@ jobs:
         cd ${{ env.PROJECT_ROOT }}
         ./gradlew assembleDebug
 
-    # ADIM 5: Derlenen Webnetik BlindSight APK dosyasını indirilebilir çıktı olarak panele yükler
+    # ADIM 5: Derlenen Webnetik BlindSight APK dosyasını sisteme yükler
     - name: Upload Webnetik BlindSight APK
       uses: actions/upload-artifact@v4
       with:
         name: webnetik-blindsight-apk
-        path: "**/build/outputs/apk/deb ug/*.apk"
+        path: "**/build/outputs/apk/de bug/*.apk"
