@@ -19,16 +19,19 @@ jobs:
         distribution: 'zulu'
         java-version: '21'
 
-    # ADIM 1: Zip dosyasını dışarı çıkarır
+    # ADIM 1: Zip dosyasını dışarı çıkarır ve iç içe klasör yapısını temizler
     - name: Extract Zip Files Automatically
       run: |
         ZIP_FILE=$(find . -name "webnetik-blindsight (2).zip" | head -n 1)
         if [ -n "$ZIP_FILE" ]; then
           echo "Güncel zip dosyası bulundu: $ZIP_FILE. Dışarı aktarılıyor..."
           unzip -o "$ZIP_FILE" -d ./extracted_project
-          # İç içe klasör yapısını kök dizine senkronize et
-          if [ -d "./extracted_project/My Application" ]; then
-            cp -r "./extracted_project/My Application"/* ./ 2>/dev/null || true
+          
+          # Zip içindeki ilk alt dizini bul (bazen My Application gibi bir klasörün içine koyar)
+          SUB_DIR=$(find ./extracted_project -maxdepth 1 -type d -not -path "./extracted_project" | head -n 1)
+          if [ -n "$SUB_DIR" ] && [ -f "$SUB_DIR/settings.gradle.kts" -o -f "$SUB_DIR/settings.gradle" ]; then
+            echo "İç içe proje dizini algılandı: $SUB_DIR. Köke taşınıyor..."
+            cp -r "$SUB_DIR"/* ./ 2>/dev/null || true
           else
             cp -r ./extracted_project/* ./ 2>/dev/null || true
           fi
@@ -37,50 +40,56 @@ jobs:
           exit 1
         fi
 
-    # ADIM 2: Çevre Değişkenleri ve İmza Anahtarı Yapılandırması
-    - name: Configure Signatures and Environments
+    # ADIM 2: Modül Klasör İsmini 'app' Yaparak Gradle'ı Senkronize Etme (KRİTİK ADIM)
+    - name: Fix App Directory and Signatures
       run: |
-        # Gerçek settings dosyasını tespit et
-        SETTINGS_FILE=$(find . -name "settings.gradle*" -not -path "./extracted_project/*" -print -quit)
-        SETTINGS_DIR=$(dirname "$SETTINGS_FILE")
+        # Gerçek kodların ve build.gradle'ın olduğu modül klasörünü ara (kök dizindeki build.gradle hariç)
+        MODULE_BUILDFILE=$(find . -mindepth 2 -name "build.gradle*" -not -path "./extracted_project/*" -print -quit)
         
-        cd "$SETTINGS_DIR"
-        echo "Proje kök dizini doğrulandı: $SETTINGS_DIR"
-        
-        # Gerekli çevre ve konfigürasyon dosyalarını oluştur
+        if [ -n "$MODULE_BUILDFILE" ]; then
+          ACTUAL_MODULE_DIR=$(dirname "$MODULE_BUILDFILE" | sed 's|./||')
+          echo "Gerçek modül klasörü tespit edildi: $ACTUAL_MODULE_DIR"
+          
+          # Eğer klasör adı 'app' değilse, Gradle hata vermesin diye adını 'app' olarak değiştiriyoruz!
+          if [ "$ACTUAL_MODULE_DIR" != "app" ]; then
+            echo "Modül adı '$ACTUAL_MODULE_DIR' -> 'app' olarak yeniden adlandırılıyor..."
+            mv "$ACTUAL_MODULE_DIR" app
+          fi
+        else
+          echo "Modül klasörü bulunamadı, varsayılan 'app' klasörü oluşturuluyor."
+          mkdir -p app
+        fi
+
+        # Çevre değişkenleri ve sahte verileri üret
         echo "API_KEY=webnetik_dummy_key" > .env.example
         echo "BASE_URL=https://webnetik.security" >> .env.example
 
+        # Sistem imza anahtarını (debug.keystore) üret
         echo "Sistem imza anahtarı (debug.keystore) sunucuda oluşturuluyor..."
         keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
 
-        # Asıl modül dizinini (app) bulup Firebase altyapısını besle
-        APP_DIR=$(find . -maxdepth 2 -name "build.gradle*" -not -path "./build.gradle*" -print -quit | xargs -I {} dirname {})
-        mkdir -p "$APP_DIR"
-        echo '{"project_info":{"project_number":"123456789","project_id":"webnetik-blindsight"},"client":[{"client_info":{"mobilesdk_app_id":"1:123456:android:123","android_client_info":{"package_name":"com.aistudio.blindsight.webnetik"}},"api_key":[{"current_key":"dummy_key"}]}]}' > "$APP_DIR/google-services.json"
+        # Firebase bağımlılığını besle (Artık kesinlikle adı 'app' olan klasörün içine koyuyoruz)
+        echo '{"project_info":{"project_number":"123456789","project_id":"webnetik-blindsight"},"client":[{"client_info":{"mobilesdk_app_id":"1:123456:android:123","android_client_info":{"package_name":"com.aistudio.blindsight.webnetik"}},"api_key":[{"current_key":"dummy_key"}]}]}' > app/google-services.json
         
-        # Yapay zeka modelinin yüklenmesi gereken assets klasörünü ayarla
-        mkdir -p "$APP_DIR/src/main/assets"
-        echo "TARGET_ASSETS_DIR=$SETTINGS_DIR/$APP_DIR/src/main/assets" >> $GITHUB_ENV
-
+        # Yapay zeka model klasörünü garanti altına al
+        mkdir -p app/src/main/assets
+        
         if [ ! -f "gradlew" ]; then
           gradle wrapper
         fi
         chmod +x gradlew
-        echo "PROJECT_ROOT=$SETTINGS_DIR" >> $GITHUB_ENV
 
-    # ADIM 3: Yapay Zeka Modelini Orijinal Assets Klasörüne İndirir
+    # ADIM 3: Yapay Zeka Modelini Yeniden Adlandırılmış 'app' Klasörüne İndirir
     - name: Download Edge AI Model (MediaPipe Face Detection)
       run: |
-        curl -L -o ${{ env.TARGET_ASSETS_DIR }}/face_detection_full.tflite https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite
+        curl -L -o app/src/main/assets/face_detection_full.tflite https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite
 
-    # ADIM 4: Projenin Kendi Orijinal Ayarlarıyla APK Derleme İşlemini Başlatır
+    # ADIM 4: APK Derleme İşlemini Başlatır
     - name: Build Production APK
       run: |
-        cd ${{ env.PROJECT_ROOT }}
         ./gradlew assembleDebug
 
-    # ADIM 5: Üretilen APK'ları Güvenli Alana Toplar
+    # ADIM 5: Üretilen APK'ları Toplar
     - name: Locate and Collect APK File
       run: |
         mkdir -p ./apk_output
@@ -88,7 +97,7 @@ jobs:
         echo "Derleme Sonucu Bulunan APK Dosyaları:"
         ls -la ./apk_output/
 
-    # ADIM 6: APK Çıktısını Yukarıdaki Panele Gönderir
+    # ADIM 6: APK Çıktısını Panele Yükler
     - name: Upload Webnetik BlindSight APK
       uses: actions/upload-artifact@v4
       with:
