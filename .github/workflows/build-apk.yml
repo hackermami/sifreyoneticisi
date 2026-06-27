@@ -26,7 +26,7 @@ jobs:
         if [ -n "$ZIP_FILE" ]; then
           echo "Güncel zip dosyası bulundu: $ZIP_FILE. Dışarı aktarılıyor..."
           unzip -o "$ZIP_FILE" -d ./extracted_project
-          # İç içe klasör oluştuysa köke taşıyoruz
+          # İç içe klasör yapısını kök dizine senkronize et
           if [ -d "./extracted_project/My Application" ]; then
             cp -r "./extracted_project/My Application"/* ./ 2>/dev/null || true
           else
@@ -37,36 +37,29 @@ jobs:
           exit 1
         fi
 
-    # ADIM 2: Orijinal Dosyaları Korumak ve Eksik Ayarları Enjekte Etmek
-    - name: Fix Repositories and Environment
+    # ADIM 2: Çevre Değişkenleri ve İmza Anahtarı Yapılandırması
+    - name: Configure Signatures and Environments
       run: |
-        # Gerçek build.gradle/settings.gradle nerede bulalım
+        # Gerçek settings dosyasını tespit et
         SETTINGS_FILE=$(find . -name "settings.gradle*" -not -path "./extracted_project/*" -print -quit)
         SETTINGS_DIR=$(dirname "$SETTINGS_FILE")
         
         cd "$SETTINGS_DIR"
         echo "Proje kök dizini doğrulandı: $SETTINGS_DIR"
         
-        # Sadece eksik olabilecek çevre değişkenlerini üretiyoruz
+        # Gerekli çevre ve konfigürasyon dosyalarını oluştur
         echo "API_KEY=webnetik_dummy_key" > .env.example
         echo "BASE_URL=https://webnetik.security" >> .env.example
 
         echo "Sistem imza anahtarı (debug.keystore) sunucuda oluşturuluyor..."
         keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
 
-        # Orijinal settings.gradle dosyasını ezmek yerine sadece eklenti depolarını zorla enjekte ediyoruz
-        if [ -f "settings.gradle.kts" ]; then
-          sed -i '1i\pluginManagement { repositories { google(); mavenCentral(); gradlePluginPortal() } }\ndependencyResolutionManagement { repositories { google(); mavenCentral() } }' settings.gradle.kts
-        elif [ -f "settings.gradle" ]; then
-          sed -i '1i\pluginManagement { repositories { google(); mavenCentral(); gradlePluginPortal() } }\ndependencyResolutionManagement { repositories { google(); mavenCentral() } }' settings.gradle
-        fi
-
-        # Google Services JSON dosyasını asıl modülün (app) içine yerleştir
+        # Asıl modül dizinini (app) bulup Firebase altyapısını besle
         APP_DIR=$(find . -maxdepth 2 -name "build.gradle*" -not -path "./build.gradle*" -print -quit | xargs -I {} dirname {})
         mkdir -p "$APP_DIR"
         echo '{"project_info":{"project_number":"123456789","project_id":"webnetik-blindsight"},"client":[{"client_info":{"mobilesdk_app_id":"1:123456:android:123","android_client_info":{"package_name":"com.aistudio.blindsight.webnetik"}},"api_key":[{"current_key":"dummy_key"}]}]}' > "$APP_DIR/google-services.json"
         
-        # Yapay zeka model klasörünü garantiye al
+        # Yapay zeka modelinin yüklenmesi gereken assets klasörünü ayarla
         mkdir -p "$APP_DIR/src/main/assets"
         echo "TARGET_ASSETS_DIR=$SETTINGS_DIR/$APP_DIR/src/main/assets" >> $GITHUB_ENV
 
@@ -76,26 +69,26 @@ jobs:
         chmod +x gradlew
         echo "PROJECT_ROOT=$SETTINGS_DIR" >> $GITHUB_ENV
 
-    # ADIM 3: Yapay Zeka Modelini Doğru Konuma İndirir
+    # ADIM 3: Yapay Zeka Modelini Orijinal Assets Klasörüne İndirir
     - name: Download Edge AI Model (MediaPipe Face Detection)
       run: |
         curl -L -o ${{ env.TARGET_ASSETS_DIR }}/face_detection_full.tflite https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite
 
-    # ADIM 4: APK Derleme İşlemini Başlatır
+    # ADIM 4: Projenin Kendi Orijinal Ayarlarıyla APK Derleme İşlemini Başlatır
     - name: Build Production APK
       run: |
         cd ${{ env.PROJECT_ROOT }}
         ./gradlew assembleDebug
 
-    # ADIM 5: APK Dosyasını Toplar
+    # ADIM 5: Üretilen APK'ları Güvenli Alana Toplar
     - name: Locate and Collect APK File
       run: |
         mkdir -p ./apk_output
         find . -name "*.apk" -not -path "*/build-cache/*" -exec cp {} ./apk_output/ \;
-        echo "Toplanan APK'lar:"
+        echo "Derleme Sonucu Bulunan APK Dosyaları:"
         ls -la ./apk_output/
 
-    # ADIM 6: Çıktı Klasörünü Panele Yükler
+    # ADIM 6: APK Çıktısını Yukarıdaki Panele Gönderir
     - name: Upload Webnetik BlindSight APK
       uses: actions/upload-artifact@v4
       with:
