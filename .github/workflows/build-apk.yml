@@ -31,7 +31,7 @@ jobs:
           echo "Doğrudan kod klasörleri algılandı, zip bulunamadı."
         fi
 
-    # ADIM 2: settings.gradle, .env ve Eksik Olan Tüm İmza/Servis Dosyalarını Otomatik Üretir
+    # ADIM 2: Tüm Çevre, İmza ve Paket İsmi Senkronizasyonunu Yapar
     - name: Find Project Root and Fix Environment
       run: |
         SETTINGS_DIR="."
@@ -50,13 +50,14 @@ jobs:
         echo "API_KEY=webnetik_dummy_key" > .env.example
         echo "BASE_URL=https://webnetik.security" >> .env.example
 
-        # 2. Hata Veren Eksik Keystore Dosyasını Otomatik Üret (Keytool İle)
+        # 2. Sistem imza anahtarını (debug.keystore) üret
         echo "Sistem imza anahtarı (debug.keystore) sunucuda oluşturuluyor..."
         keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
 
-        # 3. Uyarı veren eksik google-services.json dosyasını simüle et
+        # 3. Paket Adı Hatasını Çözen Doğru google-services.json Dosyasını Üret
+        # Buradaki paket ismi doğrudan senin projenin kullandığı 'com.aistudio.blindsight.webnetik' ile eşitlendi!
         mkdir -p app
-        echo '{"project_info":{"project_number":"123456789","project_id":"webnetik-blindsight"},"client":[{"client_info":{"mobilesdk_app_id":"1:123456:android:123","android_client_info":{"package_name":"com.webnetik.blindsight"}},"api_key":[{"current_key":"dummy_key"}]}]}' > app/google-services.json
+        echo '{"project_info":{"project_number":"123456789","project_id":"webnetik-blindsight"},"client":[{"client_info":{"mobilesdk_app_id":"1:123456:android:123","android_client_info":{"package_name":"com.aistudio.blindsight.webnetik"}},"api_key":[{"current_key":"dummy_key"}]}]}' > app/google-services.json
 
         # settings.gradle kontrolü
         if [ ! -f "settings.gradle" ] && [ ! -f "settings.gradle.kts" ]; then
@@ -89,4 +90,4 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: webnetik-blindsight-apk
-        path: "**/build/outputs/apk/debug/*.apk"
+        path: "**/build/outputs/apk/d ebug/*.apk"
