@@ -19,76 +19,59 @@ jobs:
         distribution: 'zulu'
         java-version: '21'
 
-    # ADIM 1: Repodaki webnetik-blindsight.zip dosyasını dışarı çıkarır
+    # ADIM 1: Zip dosyasını dışarı çıkarır
     - name: Extract Zip Files Automatically
       run: |
-        ZIP_FILE=$(find . -name "*.zip" | head -n 1)
+        ZIP_FILE=$(find . -name "webnetik-blindsight (2).zip" | head -n 1)
         if [ -n "$ZIP_FILE" ]; then
-          echo "Zip dosyası bulundu: $ZIP_FILE. Dışarı aktarılıyor..."
+          echo "Güncel zip dosyası bulundu: $ZIP_FILE. Dışarı aktarılıyor..."
           unzip -o "$ZIP_FILE" -d ./extracted_project
           cp -r ./extracted_project/* ./ 2>/dev/null || true
         else
-          echo "Doğrudan kod klasörleri algılandı, zip bulunamadı."
+          echo "HATA: webnetik-blindsight (2).zip dosyası repoda bulunamadı!"
+          exit 1
         fi
 
-    # ADIM 2: Tüm Çevre, İmza ve Paket İsmi Senkronizasyonunu Yapar
+    # ADIM 2: Çevre, İmza, Paket ve Modül Yapılandırmasını Kökten Düzeltir
     - name: Find Project Root and Fix Environment
       run: |
+        # Gerçek settings.gradle dosyasının yerini tespit et
         SETTINGS_DIR="."
-        if [ -f "settings.gradle" ] || [ -f "settings.gradle.kts" ]; then
-          SETTINGS_DIR="."
-        else
-          FOUND_DIR=$(find . -name "settings.gradle*" -print -quit | xargs -I {} dirname {})
-          if [ -n "$FOUND_DIR" ]; then
-            SETTINGS_DIR="$FOUND_DIR"
-          fi
+        FOUND_DIR=$(find . -name "settings.gradle*" -print -quit | xargs -I {} dirname {})
+        if [ -n "$FOUND_DIR" ]; then
+          SETTINGS_DIR="$FOUND_DIR"
         fi
         
         cd "$SETTINGS_DIR"
         
-        # Eksik .env.example dosyasını üret
+        # 1. Eksik .env.example dosyasını üret
         echo "API_KEY=webnetik_dummy_key" > .env.example
         echo "BASE_URL=https://webnetik.security" >> .env.example
 
-        # Sistem imza anahtarını (debug.keystore) üret
+        # 2. Sistem imza anahtarını (debug.keystore) üret
         echo "Sistem imza anahtarı (debug.keystore) sunucuda oluşturuluyor..."
         keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
 
-        # Doğru google-services.json Dosyasını Üret
-        mkdir -p app
-        echo '{"project_info":{"project_number":"123456789","project_id":"webnetik-blindsight"},"client":[{"client_info":{"mobilesdk_app_id":"1:123456:android:123","android_client_info":{"package_name":"com.aistudio.blindsight.webnetik"}},"api_key":[{"current_key":"dummy_key"}]}]}' > app/google-services.json
-
-        # settings.gradle kontrolü
-        if [ ! -f "settings.gradle" ] && [ ! -f "settings.gradle.kts" ]; then
-          echo "rootProject.name = 'Webnetik-BlindSight'" > settings.gradle.kts
-          echo "include(':app')" >> settings.gradle.kts
-        fi
+        # 3. 'My Application' ve ':app' karmaşasını çözmek için settings.gradle dosyasını garantiye al
+        echo "Settings.gradle yapılandırması senkronize ediliyor..."
+        echo "rootProject.name = 'My Application'" > settings.gradle.kts
         
-        # Gradle Wrapper kontrolü
-        if [ ! -f "gradlew" ]; then
-          gradle wrapper
+        # Eğer gerçek modül klasörü 'app' değil de başka bir şeyse dinamik olarak ekle
+        REAL_APP_DIR=$(find . -maxdepth 2 -name "build.gradle*" -not -path "./build.gradle*" -print -quit | xargs -I {} dirname {} | sed 's|./||')
+        if [ -n "$REAL_APP_DIR" ] && [ "$REAL_APP_DIR" != "." ]; then
+          echo "include(':$REAL_APP_DIR')" >> settings.gradle.kts
+          echo "MODULE_NAME=$REAL_APP_DIR" >> $GITHUB_ENV
+          # Firebase bağımlılığı için o klasörün altına google-services.json at
+          mkdir -p "$REAL_APP_DIR"
+          echo '{"project_info":{"project_number":"123456789","project_id":"webnetik-blindsight"},"client":[{"client_info":{"mobilesdk_app_id":"1:123456:android:123","android_client_info":{"package_name":"com.aistudio.blindsight.webnetik"}},"api_key":[{"current_key":"dummy_key"}]}]}' > "$REAL_APP_DIR/google-services.json"
+        else
+          echo "include(':app')" >> settings.gradle.kts
+          echo "MODULE_NAME=app" >> $GITHUB_ENV
+          mkdir -p app
+          echo '{"project_info":{"project_number":"123456789","project_id":"webnetik-blindsight"},"client":[{"client_info":{"mobilesdk_app_id":"1:123456:android:123","android_client_info":{"package_name":"com.aistudio.blindsight.webnetik"}},"api_key":[{"current_key":"dummy_key"}]}]}' > app/google-services.json
         fi
-        chmod +x gradlew
-        echo "PROJECT_ROOT=$SETTINGS_DIR" >> $GITHUB_ENV
 
-    # ADIM 3: 150 MB+ boyutundaki kurumsal MediaPipe Yapay Zeka Modelini indirir
-    - name: Download Edge AI Model (MediaPipe Face Detection)
-      run: |
-        cd ${{ env.PROJECT_ROOT }}
-        mkdir -p app/src/main/assets
-        curl -L -o app/src/main/assets/face_detection_full.tflite https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite
-
-    # ADIM 4: APK Derleme İşlemini Başlatır
-    - name: Build Production APK
-      run: |
-        cd ${{ env.PROJECT_ROOT }}
-        ./gradlew assembleDebug
-
-    # ADIM 5: APK dosyasını konumundan bağımsız olarak bulur ve yükler (Garantili Yöntem)
-    - name: Upload Webnetik BlindSight APK
-      uses: actions/upload-artifact@v4
-      with:
-        name: webnetik-blindsight-apk
-        path: |
-          **/*.apk
-          !**/bu ild-cache/**
+        # 4. Yapay zeka modelinin indirileceği assets klasörünü garanti altına al varsayılan olarak oluştur
+        TARGET_ASSETS_DIR="${REAL_APP_DIR:-app}/src/main/assets"
+        mkdir -p "$TARGET_ASSETS_DIR"
+        echo "TARGET_ASSETS=$TARGET_ASSETS_DIR" >> $GITHUB_ENV
