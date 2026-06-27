@@ -49,16 +49,17 @@ jobs:
         echo "Sistem imza anahtarı (debug.keystore) sunucuda oluşturuluyor..."
         keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
 
-        echo "rootProject.name = 'My Application'" > settings.gradle.kts
+        # KOTLIN GRADLE (kts) İÇİN ÇİFT TIRNAK HATASI BURADA DÜZELTİLDİ!
+        echo 'rootProject.name = "My Application"' > settings.gradle.kts
         
-        REAL_APP_DIR=$(find . -maxdepth 2 -name "build.gradle*" -not -path "./build.gradle*" -print -quit | xargs -I {} dirname {} | sed 's|./||')
-        if [ -n "$REAL_APP_DIR" ] && [ "$REAL_APP_DIR" != "." ]; then
-          echo "include(':$REAL_APP_DIR')" >> settings.gradle.kts
+        REAL_APP_DIR=$(find . -maxdepth 2 -name "build.gradle*" -not -path "./build.gradle*" -not -path "./extracted_project/*" -print -quit | xargs -I {} dirname {} | sed 's|./||')
+        if [ -n "$REAL_APP_DIR" ] && [ "$REAL_APP_DIR" != "." ] && [ "$REAL_APP_DIR" != "extracted_project" ]; then
+          echo "include(\":$REAL_APP_DIR\")" >> settings.gradle.kts
           echo "MODULE_NAME=$REAL_APP_DIR" >> $GITHUB_ENV
           mkdir -p "$REAL_APP_DIR"
           echo '{"project_info":{"project_number":"123456789","project_id":"webnetik-blindsight"},"client":[{"client_info":{"mobilesdk_app_id":"1:123456:android:123","android_client_info":{"package_name":"com.aistudio.blindsight.webnetik"}},"api_key":[{"current_key":"dummy_key"}]}]}' > "$REAL_APP_DIR/google-services.json"
         else
-          echo "include(':app')" >> settings.gradle.kts
+          echo 'include(":app")' >> settings.gradle.kts
           echo "MODULE_NAME=app" >> $GITHUB_ENV
           mkdir -p app
           echo '{"project_info":{"project_number":"123456789","project_id":"webnetik-blindsight"},"client":[{"client_info":{"mobilesdk_app_id":"1:123456:android:123","android_client_info":{"package_name":"com.aistudio.blindsight.webnetik"}},"api_key":[{"current_key":"dummy_key"}]}]}' > app/google-services.json
@@ -85,3 +86,19 @@ jobs:
       run: |
         cd ${{ env.PROJECT_ROOT }}
         ./gradlew assembleDebug
+
+    # ADIM 5: APK Dosyasını Nerede Olursa Olsun Bulur ve Ana Dizine Çeker
+    - name: Locate and Collect APK File
+      run: |
+        mkdir -p ./apk_output
+        echo "Üretilen APK dosyaları sunucu diskinde aranıyor..."
+        find . -name "*.apk" -not -path "*/build-cache/*" -exec cp {} ./apk_output/ \;
+        echo "Bulunan APK dosyaları:"
+        ls -la ./apk_output/
+
+    # ADIM 6: Çıktı Klasörünü Panele Yükler
+    - name: Upload Webnetik BlindSight APK
+      uses: actions/upload-artifact@v4
+      with:
+        name: webnetik-blindsight-apk
+        path: ./apk_output/*.apk
