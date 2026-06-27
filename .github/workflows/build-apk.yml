@@ -19,40 +19,38 @@ jobs:
         distribution: 'zulu'
         java-version: '21'
 
-    # ADIM 1: Zip dosyasını dışarı çıkarır ve iç içe klasör yapısını temizler
+    # ADIM 1: Belirttiğin 'webnetik-blindsight.zip' dosyasını tam adıyla dışarı çıkarır
     - name: Extract Zip Files Automatically
       run: |
-        ZIP_FILE=$(find . -name "webnetik-blindsight (2).zip" | head -n 1)
+        ZIP_FILE=$(find . -name "webnetik-blindsight.zip" | head -n 1)
         if [ -n "$ZIP_FILE" ]; then
           echo "Güncel zip dosyası bulundu: $ZIP_FILE. Dışarı aktarılıyor..."
           unzip -o "$ZIP_FILE" -d ./extracted_project
           
-          # Zip içindeki ilk alt dizini bul (bazen My Application gibi bir klasörün içine koyar)
-          SUB_DIR=$(find ./extracted_project -maxdepth 1 -type d -not -path "./extracted_project" | head -n 1)
-          if [ -n "$SUB_DIR" ] && [ -f "$SUB_DIR/settings.gradle.kts" -o -f "$SUB_DIR/settings.gradle" ]; then
-            echo "İç içe proje dizini algılandı: $SUB_DIR. Köke taşınıyor..."
-            cp -r "$SUB_DIR"/* ./ 2>/dev/null || true
+          # Zip içindeki ana proje dizinini köke senkronize et
+          if [ -d "./extracted_project/My Application" ]; then
+            cp -r "./extracted_project/My Application"/* ./ 2>/dev/null || true
           else
             cp -r ./extracted_project/* ./ 2>/dev/null || true
           fi
         else
-          echo "HATA: webnetik-blindsight (2).zip dosyası repoda bulunamadı!"
+          echo "HATA: webnetik-blindsight.zip dosyası repoda bulunamadı!"
           exit 1
         fi
 
-    # ADIM 2: Modül Klasör İsmini 'app' Yaparak Gradle'ı Senkronize Etme (KRİTİK ADIM)
-    - name: Fix App Directory and Signatures
+    # ADIM 2: Modül Klasörünü ve Gradle Ortamını Doğrulama
+    - name: Fix Project Directory and Signatures
       run: |
-        # Gerçek kodların ve build.gradle'ın olduğu modül klasörünü ara (kök dizindeki build.gradle hariç)
+        # İç kısımdaki build.gradle dosyasını arayarak asıl modülü bul (app klasörü)
         MODULE_BUILDFILE=$(find . -mindepth 2 -name "build.gradle*" -not -path "./extracted_project/*" -print -quit)
         
         if [ -n "$MODULE_BUILDFILE" ]; then
           ACTUAL_MODULE_DIR=$(dirname "$MODULE_BUILDFILE" | sed 's|./||')
           echo "Gerçek modül klasörü tespit edildi: $ACTUAL_MODULE_DIR"
           
-          # Eğer klasör adı 'app' değilse, Gradle hata vermesin diye adını 'app' olarak değiştiriyoruz!
+          # Eğer klasör adı 'app' değilse Gradle'ın ayar bütünlüğü bozulmasın diye 'app' yapıyoruz
           if [ "$ACTUAL_MODULE_DIR" != "app" ]; then
-            echo "Modül adı '$ACTUAL_MODULE_DIR' -> 'app' olarak yeniden adlandırılıyor..."
+            echo "Modül adı '$ACTUAL_MODULE_DIR' -> 'app' olarak güncelleniyor..."
             mv "$ACTUAL_MODULE_DIR" app
           fi
         else
@@ -60,18 +58,18 @@ jobs:
           mkdir -p app
         fi
 
-        # Çevre değişkenleri ve sahte verileri üret
+        # Gerekli mock (.env) çevre yapılandırmaları
         echo "API_KEY=webnetik_dummy_key" > .env.example
         echo "BASE_URL=https://webnetik.security" >> .env.example
 
-        # Sistem imza anahtarını (debug.keystore) üret
+        # Android 10 için debug imza anahtarını (debug.keystore) üretir
         echo "Sistem imza anahtarı (debug.keystore) sunucuda oluşturuluyor..."
         keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
 
-        # Firebase bağımlılığını besle (Artık kesinlikle adı 'app' olan klasörün içine koyuyoruz)
+        # Projedeki Firebase veya Google bağımlılıkları için gerekli boş şablonu yerleştir
         echo '{"project_info":{"project_number":"123456789","project_id":"webnetik-blindsight"},"client":[{"client_info":{"mobilesdk_app_id":"1:123456:android:123","android_client_info":{"package_name":"com.aistudio.blindsight.webnetik"}},"api_key":[{"current_key":"dummy_key"}]}]}' > app/google-services.json
         
-        # Yapay zeka model klasörünü garanti altına al
+        # Yapay zeka modelinin yerleşeceği assets klasörünü garantiye al
         mkdir -p app/src/main/assets
         
         if [ ! -f "gradlew" ]; then
@@ -79,7 +77,7 @@ jobs:
         fi
         chmod +x gradlew
 
-    # ADIM 3: Yapay Zeka Modelini Yeniden Adlandırılmış 'app' Klasörüne İndirir
+    # ADIM 3: Edge-AI Yüz Tanıma Modelini Assets Klasörüne Çeker
     - name: Download Edge AI Model (MediaPipe Face Detection)
       run: |
         curl -L -o app/src/main/assets/face_detection_full.tflite https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite
@@ -89,7 +87,7 @@ jobs:
       run: |
         ./gradlew assembleDebug
 
-    # ADIM 5: Üretilen APK'ları Toplar
+    # ADIM 5: Üretilen APK'ları Çıktı Klasörüne Toplar
     - name: Locate and Collect APK File
       run: |
         mkdir -p ./apk_output
@@ -97,9 +95,9 @@ jobs:
         echo "Derleme Sonucu Bulunan APK Dosyaları:"
         ls -la ./apk_output/
 
-    # ADIM 6: APK Çıktısını Panele Yükler
+    # ADIM 6: APK Çıktısını Panelin Yukarıdaki 'Artifacts' Kısmına Yükler
     - name: Upload Webnetik BlindSight APK
       uses: actions/upload-artifact@v4
       with:
         name: webnetik-blindsight-apk
-        path: ./apk_output/*.apk
+        path: ./apk _output/*.apk
