@@ -31,10 +31,9 @@ jobs:
           echo "Doğrudan kod klasörleri algılandı, zip bulunamadı."
         fi
 
-    # ADIM 2: settings.gradle dosyasını arar ve eksik sistem dosyalarını (Hata Veren .env Dahil) üretir
+    # ADIM 2: settings.gradle, .env ve Eksik Olan Tüm İmza/Servis Dosyalarını Otomatik Üretir
     - name: Find Project Root and Fix Environment
       run: |
-        # Broken pipe hatasını engellemek için daha temiz bir arama metodu kullanıyoruz
         SETTINGS_DIR="."
         if [ -f "settings.gradle" ] || [ -f "settings.gradle.kts" ]; then
           SETTINGS_DIR="."
@@ -47,20 +46,26 @@ jobs:
         
         cd "$SETTINGS_DIR"
         
-        # Hatanın ana sebebi olan eksik .env.example dosyasını burada otomatik oluşturuyoruz!
-        echo "Eksik .env.example dosyası sunucuda simüle ediliyor..."
+        # 1. Eksik .env.example dosyasını üret
         echo "API_KEY=webnetik_dummy_key" > .env.example
         echo "BASE_URL=https://webnetik.security" >> .env.example
 
-        # settings.gradle hiç yoksa sıfırdan üret
+        # 2. Hata Veren Eksik Keystore Dosyasını Otomatik Üret (Keytool İle)
+        echo "Sistem imza anahtarı (debug.keystore) sunucuda oluşturuluyor..."
+        keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+
+        # 3. Uyarı veren eksik google-services.json dosyasını simüle et
+        mkdir -p app
+        echo '{"project_info":{"project_number":"123456789","project_id":"webnetik-blindsight"},"client":[{"client_info":{"mobilesdk_app_id":"1:123456:android:123","android_client_info":{"package_name":"com.webnetik.blindsight"}},"api_key":[{"current_key":"dummy_key"}]}]}' > app/google-services.json
+
+        # settings.gradle kontrolü
         if [ ! -f "settings.gradle" ] && [ ! -f "settings.gradle.kts" ]; then
           echo "rootProject.name = 'Webnetik-BlindSight'" > settings.gradle.kts
           echo "include(':app')" >> settings.gradle.kts
         fi
         
-        # Gradle Wrapper (gradlew) kontrolü ve sıfırdan üretilmesi
+        # Gradle Wrapper kontrolü
         if [ ! -f "gradlew" ]; then
-          echo "gradlew bulunamadı, yerel gradle sunucuda kuruluyor..."
           gradle wrapper
         fi
         chmod +x gradlew
@@ -84,4 +89,4 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: webnetik-blindsight-apk
-        path: "**/build/outputs/apk/de bug/*.apk"
+        path: "**/build/outputs/apk/debug/*.apk"
