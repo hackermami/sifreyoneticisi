@@ -46,16 +46,15 @@ jobs:
         
         cd "$SETTINGS_DIR"
         
-        # 1. Eksik .env.example dosyasını üret
+        # Eksik .env.example dosyasını üret
         echo "API_KEY=webnetik_dummy_key" > .env.example
         echo "BASE_URL=https://webnetik.security" >> .env.example
 
-        # 2. Sistem imza anahtarını (debug.keystore) üret
+        # Sistem imza anahtarını (debug.keystore) üret
         echo "Sistem imza anahtarı (debug.keystore) sunucuda oluşturuluyor..."
         keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
 
-        # 3. Paket Adı Hatasını Çözen Doğru google-services.json Dosyasını Üret
-        # Buradaki paket ismi doğrudan senin projenin kullandığı 'com.aistudio.blindsight.webnetik' ile eşitlendi!
+        # Doğru google-services.json Dosyasını Üret
         mkdir -p app
         echo '{"project_info":{"project_number":"123456789","project_id":"webnetik-blindsight"},"client":[{"client_info":{"mobilesdk_app_id":"1:123456:android:123","android_client_info":{"package_name":"com.aistudio.blindsight.webnetik"}},"api_key":[{"current_key":"dummy_key"}]}]}' > app/google-services.json
 
@@ -85,9 +84,11 @@ jobs:
         cd ${{ env.PROJECT_ROOT }}
         ./gradlew assembleDebug
 
-    # ADIM 5: Derlenen Webnetik BlindSight APK dosyasını sisteme yükler
+    # ADIM 5: APK dosyasını konumundan bağımsız olarak bulur ve yükler (Garantili Yöntem)
     - name: Upload Webnetik BlindSight APK
       uses: actions/upload-artifact@v4
       with:
         name: webnetik-blindsight-apk
-        path: "**/build/outputs/apk/d ebug/*.apk"
+        path: |
+          **/*.apk
+          !**/bu ild-cache/**
