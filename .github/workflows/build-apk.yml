@@ -32,7 +32,7 @@ jobs:
           exit 1
         fi
 
-    # ADIM 2: Çevre, İmza, Paket ve Modül Yapılandırmasını Kökten Düzeltir
+    # ADIM 2: Çevre, Depo Kuralları ve Paket Yapılandırmasını Düzeltir
     - name: Find Project Root and Fix Environment
       run: |
         SETTINGS_DIR="."
@@ -49,8 +49,24 @@ jobs:
         echo "Sistem imza anahtarı (debug.keystore) sunucuda oluşturuluyor..."
         keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
 
-        # KOTLIN GRADLE (kts) İÇİN ÇİFT TIRNAK HATASI BURADA DÜZELTİLDİ!
-        echo 'rootProject.name = "My Application"' > settings.gradle.kts
+        # EKLENTİNİN BULUNABİLMESİ İÇİN RESMİ DEPOLARI SIFIRDAN ENJEKTE EDİYORUZ
+        cat << 'EOF' > settings.gradle.kts
+        pluginManagement {
+            repositories {
+                google()
+                mavenCentral()
+                gradlePluginPortal()
+            }
+        }
+        dependencyResolutionManagement {
+            repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+            repositories {
+                google()
+                mavenCentral()
+            }
+        }
+        rootProject.name = "My Application"
+        EOF
         
         REAL_APP_DIR=$(find . -maxdepth 2 -name "build.gradle*" -not -path "./build.gradle*" -not -path "./extracted_project/*" -print -quit | xargs -I {} dirname {} | sed 's|./||')
         if [ -n "$REAL_APP_DIR" ] && [ "$REAL_APP_DIR" != "." ] && [ "$REAL_APP_DIR" != "extracted_project" ]; then
