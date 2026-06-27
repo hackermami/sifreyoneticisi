@@ -3,8 +3,7 @@ name: Webnetik BlindSight CI/CD
 on:
   push:
     branches: [ "main", "master" ]
-  pull_request:
-    branches: [ "main", "master" ]
+  workflow_dispatch:
 
 jobs:
   build:
@@ -19,24 +18,44 @@ jobs:
       with:
         distribution: 'zulu'
         java-version: '21'
-        cache: 'gradle'
 
-    - name: Grant Execute Permission for Gradle Wrapper
-      run: chmod +x gradlew
+    # Eğer dosyalar bir alt klasördeyse veya zip içindeyse diye projenin kök dizinini buluyoruz
+    - name: Find Project Root and Setup Wrapper
+      run: |
+        SETTINGS_DIR=$(find . -name "settings.gradle*" -exec dirname {} \; | head -n 1)
+        if [ -n "$SETTINGS_DIR" ]; then
+          echo "Proje kök dizini bulundu: $SETTINGS_DIR"
+          cd "$SETTINGS_DIR"
+          # Gradle çalıştırma iznini veriyoruz
+          if [ -f "gradlew" ]; then
+            chmod +x gradlew
+          fi
+        else
+          echo "HATA: settings.gradle dosyası repoda hiçbir yerde bulunamadı!"
+          exit 1
+        fi
+        echo "PROJECT_ROOT=$SETTINGS_DIR" >> $GITHUB_ENV
 
-    # Büyük Yapay Zeka Modelini (150MB+) Derlemeden Önce İndiriyoruz
-    # Not: Model dosyasını git reposuna yüklemek yerine derleme anında çekmek en profesyonel yöntemdir.
+    # Büyük Yapay Zeka Modelini (150MB+) Doğru Klasöre İndiriyoruz
     - name: Download Edge AI Model (MediaPipe Face Detection)
       run: |
+        cd ${{ env.PROJECT_ROOT }}
         mkdir -p app/src/main/assets
         curl -L -o app/src/main/assets/face_detection_full.tflite https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite
 
+    # Derleme işlemini projenin kurulu olduğu klasörde tetikliyoruz
     - name: Build Production APK
-      run: ./gradlew assembleRelease
+      run: |
+        cd ${{ env.PROJECT_ROOT }}
+        if [ -f "gradlew" ]; then
+          ./gradlew assembleDebug
+        else
+          gradle assembleDebug
+        fi
 
-    # Oluşan Kurumsal Boyuttaki APK'yı İndirilebilir Dosya Olarak Yüklüyoruz
+    # Oluşan APK'yı GitHub Paneline Yüklüyoruz
     - name: Upload Webnetik BlindSight APK
       uses: actions/upload-artifact@v4
       with:
-        name: webnetik-blindsight-release-apk
-        path: app/build/outputs/apk/release/app-release-unsigned.apk
+        name: webnetik-blindsight-apk
+        path: "**/build/outputs/apk/debu g/*.apk"
