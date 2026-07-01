@@ -8,7 +8,7 @@ on:
 
 jobs:
   build:
-    name: Locate and Compile Android Project
+    name: Unzip and Compile BlindSight
     runs-on: ubuntu-latest
 
     steps:
@@ -26,14 +26,28 @@ jobs:
       with:
         gradle-version: 8.2
 
+    - name: Unzip Project File Automatically
+      run: |
+        echo "Depodaki zip dosyası aranıyor..."
+        ZIP_FILE=$(find . -name "*.zip" | head -n 1)
+        
+        if [ -z "$ZIP_FILE" ]; then
+          echo "HATA: Depoda hiçbir .zip dosyası bulunamadı!"
+          exit 1
+        fi
+        
+        echo "Bulunan zip dosyası dışarı çıkartılıyor: $ZIP_FILE"
+        # Zip dosyasını geçici bir klasöre çıkartıyoruz
+        unzip -q "$ZIP_FILE" -d extracted_project
+        echo "Zip başarıyla ayıklandı."
+
     - name: Locate Project and Build APK
       run: |
-        # settings.gradle.kts veya settings.gradle içeren tam dizini buluyoruz
-        SETTINGS_PATH=$(find . -name settings.gradle.kts -o -name settings.gradle | head -n 1)
+        # Ayıklanan klasörün içinde settings.gradle.kts veya settings.gradle dosyasını arıyoruz
+        SETTINGS_PATH=$(find extracted_project -name settings.gradle.kts -o -name settings.gradle | head -n 1)
         
         if [ -z "$SETTINGS_PATH" ]; then
-          echo "HATA: Depoda hiçbir Android projesi yapısı (settings.gradle.kts) bulunamadı!"
-          echo "Lütfen ZArchiver'da gördüğün tüm dosyaları (.gitignore, build.gradle.kts vb.) git add . ile pushladığından emin ol."
+          echo "HATA: Ayıklanan zip içeriğinde settings.gradle.kts bulunamadı!"
           exit 1
         fi
         
@@ -41,7 +55,7 @@ jobs:
         echo "Android projesi bulundu: $PROJ_DIR"
         cd "$PROJ_DIR"
         
-        # Ekran görüntüsündeki gibi root dizinde gradlew yoksa global gradle ile build alıyoruz
+        # Derleme komutunu global gradle motoruyla ateşle
         gradle assembleDebug --no-daemon
 
     - name: Upload BlindSight Artifact
@@ -50,4 +64,4 @@ jobs:
         name: webnetik-blindsight-v1.0-debug
         path: |
           **/build/outputs/apk/debug/*.apk
-        retention- days: 7
+        retention -days: 7
