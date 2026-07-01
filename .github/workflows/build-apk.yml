@@ -1,4 +1,4 @@
-name: Webnetik BlindSight CI/CD
+name: Webnetik BlindSight Manual CI/CD
 
 on:
   push:
@@ -8,7 +8,7 @@ on:
 
 jobs:
   build:
-    name: Compiling BlindSight V1.0 Core
+    name: Auto-Generate Gradle and Compile APK
     runs-on: ubuntu-latest
 
     steps:
@@ -20,33 +20,25 @@ jobs:
       with:
         distribution: 'zulu'
         java-version: '17'
-        # Hata veren otomatik önbelleği kapatıyoruz, manuel veya bağımsız yönetim sağlayacağız
-        cache: ''
 
-    - name: Grant Execute Permission for Gradle
-      run: |
-        if [ -f "./gradlew" ]; then
-          chmod +x gradlew
-        else
-          echo "Kök dizinde gradlew bulunamadı, alt klasörler kontrol ediliyor..."
-          find . -name gradlew -exec chmod +x {} \;
-        fi
+    - name: Setup Gradle Environment Manually
+      uses: gradle/actions/setup-gradle@v3
+      with:
+        gradle-version: 8.2 # Android 10+ ve targetSdk 34 için en kararlı Gradle sürümü
 
-    - name: Build Debug APK (Offline Edge-AI Optimize)
+    - name: Build Debug APK via Manual Gradle
       run: |
-        if [ -f "./gradlew" ]; then
-          ./gradlew assembleDebug --no-daemon
-        else
-          # Eğer proje bir alt klasörün içine açıldıysa onu bulup orada derliyoruz
-          GRADLEW_PATH=$(find . -name gradlew | head -n 1)
-          if [ -z "$GRADLEW_PATH" ]; then
-            echo "HATA: Projede gradlew dosyası hiçbir yerde bulunamadı!"
-            exit 1
-          fi
-          PROJ_DIR=$(dirname "$GRADLEW_PATH")
-          cd "$PROJ_DIR"
-          ./gradlew assembleDebug --no-daemon
+        # Eğer proje bir alt klasörün içerisindeyse o klasöre geçiş yapıyoruz
+        GRADLE_BUILD_PATH=$(find . -name build.gradle -o -name build.gradle.kts | head -n 1)
+        if [ -z "$GRADLE_BUILD_PATH" ]; then
+          echo "HATA: Projede build.gradle dosyası hiçbir yerde bulunamadı!"
+          exit 1
         fi
+        PROJ_DIR=$(dirname "$GRADLE_BUILD_PATH")
+        cd "$PROJ_DIR"
+        
+        # Yerel gradlew dosyası yoksa, yüklü olan global gradle komutuyla derlemeyi başlatıyoruz
+        gradle assembleDebug --no-daemon
 
     - name: Upload BlindSight Artifact
       uses: actions/upload-artifact@v4
@@ -55,4 +47,4 @@ jobs:
         path: |
           app/build/outputs/apk/debug/app-debug.apk
           **/build/outputs/apk/debug/*.apk
-        retention-days: 7
+        retention-d ays: 7
