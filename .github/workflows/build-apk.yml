@@ -37,13 +37,11 @@ jobs:
         fi
         
         echo "Bulunan zip dosyası dışarı çıkartılıyor: $ZIP_FILE"
-        # Zip dosyasını geçici bir klasöre çıkartıyoruz
         unzip -q "$ZIP_FILE" -d extracted_project
         echo "Zip başarıyla ayıklandı."
 
     - name: Locate Project and Build APK
       run: |
-        # Ayıklanan klasörün içinde settings.gradle.kts veya settings.gradle dosyasını arıyoruz
         SETTINGS_PATH=$(find extracted_project -name settings.gradle.kts -o -name settings.gradle | head -n 1)
         
         if [ -z "$SETTINGS_PATH" ]; then
@@ -55,8 +53,10 @@ jobs:
         echo "Android projesi bulundu: $PROJ_DIR"
         cd "$PROJ_DIR"
         
-        # Derleme komutunu global gradle motoruyla ateşle
-        gradle assembleDebug --no-daemon
+        # HATA ÇÖZÜMÜ: Configuration cache çakışmalarını ve Jar oluşturma hatalarını engellemek için
+        # --no-configuration-cache parametresi eklendi ve Gradle JVM optimizasyonu yapıldı.
+        export GRADLE_OPTS="-Dorg.gradle.jvmargs=-Xmx2048m"
+        gradle assembleDebug --no-daemon --no-configuration-cache
 
     - name: Upload BlindSight Artifact
       uses: actions/upload-artifact@v4
