@@ -1,87 +1,36 @@
 name: Webnetik BlindSight CI/CD
-on:  
-  push:    
-    branches: [ "main", "master" ]  
-  workflow_dispatch:
 
-jobs:  
-  build:    
-    runs-on: ubuntu-latest    
-    steps:    
-    - name: Checkout Source Code      
-      uses: actions/checkout@v4    
+on:
+  push:
+    branches: [ "main", "master" ]
+  pull_request:
+    branches: [ "main", "master" ]
 
-    - name: Set up JDK 21      
-      uses: actions/setup-java@v4      
-      with:        
-        distribution: 'zulu'        
-        java-version: '21'    
+jobs:
+  build:
+    name: Compiling BlindSight V1.0 Core
+    runs-on: ubuntu-latest
 
-    # ADIM 1: Yeni zip dosyasını (boşluk ve parantez duyarlı) dinamik olarak bulur ve dışarı çıkarır
-    - name: Extract Zip Files Automatically      
-      run: |        
-        # Repoda webnetik-blindsight ifadesi içeren ilk zip dosyasını akıllıca bulur
-        ZIP_FILE=$(find . -maxdepth 1 -type f -name "*webnetik-blindsight*.zip" | head -n 1)        
-        
-        if [ -n "$ZIP_FILE" ]; then          
-          echo "Güncel zip dosyası bulundu: $ZIP_FILE. Dışarı aktarılıyor..."          
-          # Boşluklu dosya isimlerinde hata vermemesi için çift tırnak içinde unzip edilir          
-          unzip -o "$ZIP_FILE" -d ./extracted_project                    
-          
-          if [ -d "./extracted_project/My Application" ]; then            
-            cp -r "./extracted_project/My Application"/* ./ 2>/dev/null || true          
-          else            
-            cp -r ./extracted_project/* ./ 2>/dev/null || true          
-          fi        
-        else          
-          echo "HATA: webnetik-blindsight zip dosyası repoda bulunamadı!"          
-          exit 1        
-        fi    
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v4
 
-    # ADIM 2: Modül Klasörünü ve Çevreyi Doğrulama    
-    - name: Fix Project Directory and Signatures      
-      run: |        
-        MODULE_BUILDFILE=$(find . -mindepth 2 -name "build.gradle*" -not -path "./extracted_project/*" -print -quit)                
-        if [ -n "$MODULE_BUILDFILE" ]; then          
-          ACTUAL_MODULE_DIR=$(dirname "$MODULE_BUILDFILE" | sed 's|./||')          
-          if [ "$ACTUAL_MODULE_DIR" != "app" ]; then            
-            mv "$ACTUAL_MODULE_DIR" app          
-          fi        
-        else          
-          mkdir -p app        
-        fi        
-        echo "API_KEY=webnetik_dummy_key" > .env.example        
-        echo "BASE_URL=https://webnetik.security" >> .env.example        
-        keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"        
-        echo '{"project_info":{"project_number":"123456789","project_id":"webnetik-blindsight"},"client":[{"client_info":{"mobilesdk_app_id":"1:123456:android:123","android_client_info":{"package_name":"com.aistudio.blindsight.webnetik"}},"api_key":[{"current_key":"dummy_key"}]}]}' > app/google-services.json                
-        mkdir -p app/src/main/assets                
-        if [ ! -f "gradlew" ]; then          
-          gradle wrapper        
-        fi        
-        chmod +x gradlew    
+    - name: Set up JDK 17
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'zulu'
+        java-version: '17'
+        cache: 'gradle'
 
-    # ADIM 3: Model İndirme    
-    - name: Download Edge AI Model (MediaPipe Face Detection)      
-      run: |        
-        curl -L -o app/src/main/assets/face_detection_full.tflite https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite    
+    - name: Grant Execute Permission for Gradle
+      run: chmod +x gradlew
 
-    # ADIM 4: APK Derleme İşlemini Başlatır    
-    - name: Build Production APK      
-      run: |        
-        ./gradlew assembleDebug    
+    - name: Build Debug APK (Offline Edge-AI Optimize)
+      run: ./gradlew assembleDebug --no-daemon
 
-    # ADIM 5: TÜM DİSKİ TARAYAN GELİŞMİŞ APK TOPLAMA (KRİTİK DÜZELTME)    
-    - name: Locate and Collect APK File      
-      run: |        
-        mkdir -p ./apk_output        
-        echo "Üretilen tüm APK'lar disk genelinde derinlemesine aranıyor..."        
-        find . -type f -name "*.apk" -not -path "*/build-cache/*" -not -path "*/extracted_project/*" -exec cp {} ./apk_output/ \;        
-        echo "Toplama işlemi tamamlandı. İçerik:"        
-        ls -la ./apk_output/    
-
-    # ADIM 6: APK Çıktısını Panele Yükler    
-    - name: Upload Webnetik BlindSight APK      
-      uses: actions/upload-artifact@v4      
-      with:        
-        name: webnetik-blindsight-apk        
-        path:  ./apk_output/
+    - name: Upload BlindSight Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: webnetik-blindsight-v1.0-debug
+        path: app/build/outputs/apk/debug/app-debug.apk
+        retention- days: 7
