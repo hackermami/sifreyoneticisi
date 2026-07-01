@@ -20,17 +20,39 @@ jobs:
       with:
         distribution: 'zulu'
         java-version: '17'
-        cache: 'gradle'
+        # Hata veren otomatik önbelleği kapatıyoruz, manuel veya bağımsız yönetim sağlayacağız
+        cache: ''
 
     - name: Grant Execute Permission for Gradle
-      run: chmod +x gradlew
+      run: |
+        if [ -f "./gradlew" ]; then
+          chmod +x gradlew
+        else
+          echo "Kök dizinde gradlew bulunamadı, alt klasörler kontrol ediliyor..."
+          find . -name gradlew -exec chmod +x {} \;
+        fi
 
     - name: Build Debug APK (Offline Edge-AI Optimize)
-      run: ./gradlew assembleDebug --no-daemon
+      run: |
+        if [ -f "./gradlew" ]; then
+          ./gradlew assembleDebug --no-daemon
+        else
+          # Eğer proje bir alt klasörün içine açıldıysa onu bulup orada derliyoruz
+          GRADLEW_PATH=$(find . -name gradlew | head -n 1)
+          if [ -z "$GRADLEW_PATH" ]; then
+            echo "HATA: Projede gradlew dosyası hiçbir yerde bulunamadı!"
+            exit 1
+          fi
+          PROJ_DIR=$(dirname "$GRADLEW_PATH")
+          cd "$PROJ_DIR"
+          ./gradlew assembleDebug --no-daemon
+        fi
 
     - name: Upload BlindSight Artifact
       uses: actions/upload-artifact@v4
       with:
         name: webnetik-blindsight-v1.0-debug
-        path: app/build/outputs/apk/debug/app-debug.apk
-        retention- days: 7
+        path: |
+          app/build/outputs/apk/debug/app-debug.apk
+          **/build/outputs/apk/debug/*.apk
+        retention-days: 7
