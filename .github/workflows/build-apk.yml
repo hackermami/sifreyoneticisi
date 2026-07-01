@@ -1,4 +1,4 @@
-name: Webnetik BlindSight Complete CI/CD
+name: Webnetik BlindSight Custom Gradle CI/CD
 
 on:
   push:
@@ -8,7 +8,7 @@ on:
 
 jobs:
   build:
-    name: Unzip and Compile BlindSight
+    name: Custom Gradle Version Compile
     runs-on: ubuntu-latest
 
     steps:
@@ -21,10 +21,11 @@ jobs:
         distribution: 'zulu'
         java-version: '17'
 
-    - name: Setup Gradle Environment
+    - name: Setup Custom Gradle from Specific URL
       uses: gradle/actions/setup-gradle@v3
       with:
-        gradle-version: 8.7 # Motor sürümü yükseltildi, takılma hatası çözüldü.
+        # Belirttiğin özel dağıtım linkini sisteme zorla entegre ediyoruz
+        gradle-version: https://services.gradle.org/distributions/gradle-9.6.0-bin.zip
 
     - name: Unzip Project File Automatically
       run: |
@@ -53,14 +54,14 @@ jobs:
         echo "Android projesi bulundu: $PROJ_DIR"
         cd "$PROJ_DIR"
         
-        # Hafıza sınırı artırıldı ve tüm bağımlılıkların temiz kurulması zorunlu kılındı.
-        export GRADLE_OPTS="-Dorg.gradle.jvmargs=-Xmx4096m -XX:MaxMetaspaceSize=1024m"
-        gradle assembleDebug --no-daemon --refresh-dependencies --no-configuration-cache
-        
+        # Hafıza kısıtlamalarını ve güvenlik çakışmalarını ezen parametreler
+        export GRADLE_OPTS="-Xmx4096m -Djdk.crypto.KeyAgreement.legacyKDF=true"
+        gradle assembleDebug --no-daemon --no-configuration-cache
+
     - name: Upload BlindSight Artifact
       uses: actions/upload-artifact@v4
       with:
         name: webnetik-blindsight-v1.0-debug
         path: |
           **/build/outputs/apk/debug/*.apk
-        retention- days: 7
+        retention-days: 7
