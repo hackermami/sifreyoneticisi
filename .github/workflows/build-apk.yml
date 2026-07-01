@@ -1,4 +1,4 @@
-name: Webnetik BlindSight Manual CI/CD
+name: Webnetik BlindSight Complete CI/CD
 
 on:
   push:
@@ -8,7 +8,7 @@ on:
 
 jobs:
   build:
-    name: Auto-Generate Gradle and Compile APK
+    name: Locate and Compile Android Project
     runs-on: ubuntu-latest
 
     steps:
@@ -21,23 +21,27 @@ jobs:
         distribution: 'zulu'
         java-version: '17'
 
-    - name: Setup Gradle Environment Manually
+    - name: Setup Gradle Environment
       uses: gradle/actions/setup-gradle@v3
       with:
-        gradle-version: 8.2 # Android 10+ ve targetSdk 34 için en kararlı Gradle sürümü
+        gradle-version: 8.2
 
-    - name: Build Debug APK via Manual Gradle
+    - name: Locate Project and Build APK
       run: |
-        # Eğer proje bir alt klasörün içerisindeyse o klasöre geçiş yapıyoruz
-        GRADLE_BUILD_PATH=$(find . -name build.gradle -o -name build.gradle.kts | head -n 1)
-        if [ -z "$GRADLE_BUILD_PATH" ]; then
-          echo "HATA: Projede build.gradle dosyası hiçbir yerde bulunamadı!"
+        # settings.gradle.kts veya settings.gradle içeren tam dizini buluyoruz
+        SETTINGS_PATH=$(find . -name settings.gradle.kts -o -name settings.gradle | head -n 1)
+        
+        if [ -z "$SETTINGS_PATH" ]; then
+          echo "HATA: Depoda hiçbir Android projesi yapısı (settings.gradle.kts) bulunamadı!"
+          echo "Lütfen ZArchiver'da gördüğün tüm dosyaları (.gitignore, build.gradle.kts vb.) git add . ile pushladığından emin ol."
           exit 1
         fi
-        PROJ_DIR=$(dirname "$GRADLE_BUILD_PATH")
+        
+        PROJ_DIR=$(dirname "$SETTINGS_PATH")
+        echo "Android projesi bulundu: $PROJ_DIR"
         cd "$PROJ_DIR"
         
-        # Yerel gradlew dosyası yoksa, yüklü olan global gradle komutuyla derlemeyi başlatıyoruz
+        # Ekran görüntüsündeki gibi root dizinde gradlew yoksa global gradle ile build alıyoruz
         gradle assembleDebug --no-daemon
 
     - name: Upload BlindSight Artifact
@@ -45,6 +49,5 @@ jobs:
       with:
         name: webnetik-blindsight-v1.0-debug
         path: |
-          app/build/outputs/apk/debug/app-debug.apk
           **/build/outputs/apk/debug/*.apk
-        retention-d ays: 7
+        retention- days: 7
