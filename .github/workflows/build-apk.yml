@@ -24,7 +24,7 @@ jobs:
     - name: Setup Gradle Environment
       uses: gradle/actions/setup-gradle@v3
       with:
-        gradle-version: 8.2
+        gradle-version: 8.7 # Motor sürümü yükseltildi, takılma hatası çözüldü.
 
     - name: Unzip Project File Automatically
       run: |
@@ -53,15 +53,14 @@ jobs:
         echo "Android projesi bulundu: $PROJ_DIR"
         cd "$PROJ_DIR"
         
-        # HATA ÇÖZÜMÜ: Configuration cache çakışmalarını ve Jar oluşturma hatalarını engellemek için
-        # --no-configuration-cache parametresi eklendi ve Gradle JVM optimizasyonu yapıldı.
-        export GRADLE_OPTS="-Dorg.gradle.jvmargs=-Xmx2048m"
-        gradle assembleDebug --no-daemon --no-configuration-cache
-
+        # Hafıza sınırı artırıldı ve tüm bağımlılıkların temiz kurulması zorunlu kılındı.
+        export GRADLE_OPTS="-Dorg.gradle.jvmargs=-Xmx4096m -XX:MaxMetaspaceSize=1024m"
+        gradle assembleDebug --no-daemon --refresh-dependencies --no-configuration-cache
+        
     - name: Upload BlindSight Artifact
       uses: actions/upload-artifact@v4
       with:
         name: webnetik-blindsight-v1.0-debug
         path: |
           **/build/outputs/apk/debug/*.apk
-        retention -days: 7
+        retention- days: 7
